@@ -1979,8 +1979,8 @@ FTLinstall() {
 
     # Always replace pihole-FTL.service
     install -d -m 0755 /etc/sv/pihole-FTL
-    install -T -m 0755 "${VOIDHOLE_LOCAL_REPO}/custom/runit/pihole-FTL/run" "/etc/sv/pihole-FTL/"
-    install -T -m 0755 "${VOIDHOLE_LOCAL_REPO}/custom/runit/pihole-FTL/finish" "/etc/sv/pihole-FTL/"
+    install -m 0755 "${VOIDHOLE_LOCAL_REPO}/custom/runit/pihole-FTL/run" "/etc/sv/pihole-FTL/"
+    install -m 0755 "${VOIDHOLE_LOCAL_REPO}/custom/runit/pihole-FTL/finish" "/etc/sv/pihole-FTL/"
     ln -sfv /run/runit/supervise.pihole-FTL /etc/sv/pihole-FTL/supervise
 
     local ftlBranch
