@@ -1,0 +1,6 @@
+[submodule "AdminLTE"]
+	path = AdminLTE
+	url = https://github.com/pi-hole/AdminLTE
+[submodule "pi-hole"]
+	path = pi-hole
+	url = https://github.com/pi-hole/pi-hole
