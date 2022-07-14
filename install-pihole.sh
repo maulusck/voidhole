@@ -2459,7 +2459,6 @@ main() {
         fi
     fi
 
-
     # If the Web server was installed,
     if [[ "${INSTALL_WEB_SERVER}" == true ]]; then
         if [[ "${LIGHTTPD_ENABLED}" == true ]]; then
