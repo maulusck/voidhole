@@ -1996,7 +1996,7 @@ FTLinstall() {
 
     # Determine which version of FTL to download
     if [[ "${ftlBranch}" == "master" ]];then
-        url="https://github.com/pi-hole/ftl/releases/latest"
+        url="https://github.com/pi-hole/ftl/releases/latest/download"
     else
         url="https://ftl.pi-hole.net/${ftlBranch}"
     fi
