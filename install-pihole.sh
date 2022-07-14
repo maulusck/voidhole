@@ -72,7 +72,8 @@ VOIDHOLE_LOCAL_REPO="/etc/.voidhole"
 webInterfaceGitUrl="https://github.com/pi-hole/AdminLTE.git"
 webInterfaceDir="${webroot}/admin"
 piholeGitUrl="https://github.com/pi-hole/pi-hole.git"
-PI_HOLE_LOCAL_REPO="/etc/.pihole"
+#PI_HOLE_LOCAL_REPO="/etc/.pihole"
+PI_HOLE_LOCAL_REPO="/etc/.voidhole/pihole"
 
 # List of pihole scripts, stored in an array
 PI_HOLE_FILES=(chronometer list piholeDebug piholeLogFlush setupLCD update version gravity uninstall webpage)
