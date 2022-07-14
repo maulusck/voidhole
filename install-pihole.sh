@@ -73,6 +73,7 @@ webInterfaceGitUrl="https://github.com/pi-hole/AdminLTE.git"
 webInterfaceDir="${webroot}/admin"
 piholeGitUrl="https://github.com/pi-hole/pi-hole.git"
 PI_HOLE_LOCAL_REPO="/etc/.pihole"
+
 # List of pihole scripts, stored in an array
 PI_HOLE_FILES=(chronometer list piholeDebug piholeLogFlush setupLCD update version gravity uninstall webpage)
 # This directory is where the Pi-hole scripts will be installed
@@ -1978,8 +1979,9 @@ FTLinstall() {
     #install -T -m 0755 "${PI_HOLE_LOCAL_REPO}/advanced/Templates/pihole-FTL.service" "/etc/sv/pihole-FTL/"
 
     # Always replace pihole-FTL.service
-    install -T -m 0755 "${VOIDHOLE_LOCAL_REPO}/custom/runit/pihole-FTL/run" "/etc/sv/pihole-FTL/"
-    install -T -m 0755 "${VOIDHOLE_LOCAL_REPO}/custom/runit/pihole-FTL/finish" "/etc/sv/pihole-FTL/"
+    install -d -m 0755 /etc/sv/pihole-FTL
+    install -m 0755 "${VOIDHOLE_LOCAL_REPO}/custom/runit/pihole-FTL/run" "/etc/sv/pihole-FTL/"
+    install -m 0755 "${VOIDHOLE_LOCAL_REPO}/custom/runit/pihole-FTL/finish" "/etc/sv/pihole-FTL/"
     ln -sfv /run/runit/supervise.pihole-FTL /etc/sv/pihole-FTL/supervise
 
     local ftlBranch
@@ -2371,7 +2373,7 @@ main() {
         # Find interfaces and let the user choose one
         chooseInterface
         # find IPv4 and IPv6 information of the device
-        #collect_v4andv6_information
+        collect_v4andv6_information
         # Decide what upstream DNS Servers to use
         setDNS
         # Give the user a choice of blocklists to include in their install. Or not.
@@ -2457,7 +2459,6 @@ main() {
             echo "WEBPASSWORD=$(HashPassword "${pw}")" >> "${setupVars}"
         fi
     fi
-
 
     # If the Web server was installed,
     if [[ "${INSTALL_WEB_SERVER}" == true ]]; then
