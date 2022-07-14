@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+### BEGIN INIT INFO
+# Provides:          pihole-FTL
+# Required-Start:    $remote_fs $syslog $network
+# Required-Stop:     $remote_fs $syslog $network
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: pihole-FTL daemon
+# Description:       Enable service provided by pihole-FTL daemon
+### END INIT INFO
+
+pkill -xo "pihole-FTL"
+
+# Cleanup
+rm -f /run/pihole/FTL.sock /dev/shm/FTL-*

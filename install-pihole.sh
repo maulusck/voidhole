@@ -330,12 +330,13 @@ package_manager_detect() {
         PIHOLE_DEPS=(cronie curl iputils psmisc sudo unzip libidn2 libcap openbsd-netcat procps-ng logrotate)
         # Packages required for the Web admin interface (stored as an array)
         # It's useful to separate this from Pi-hole, since the two repos are also setup separately
-        PIHOLE_WEB_DEPS=(lighttpd)
+        PIHOLE_WEB_DEPS=(lighttpd fcgi fcgiwrap spawn-fcgi)
         # Void Linux's got different package names for php7, php8 and php8.1 . Sorting them out here. Should work, gotta try it out though.
-        if [[ -z "${phpInsMajor}" -ge 8 ]]; then
-            PIHOLE_WEB_DEPS+=("${phpVer}-cgi ${phpVer}-sqlite ${phpVer}-intl")
+        # if phpInsMajor is unset [ no php installed ] it defaults to php
+        if [[ -z "${phpInsMajor}" || "${phpInsMajor}" -le 8 ]]; then
+            PIHOLE_WEB_DEPS+=(php-cgi php-sqlite php-intl)
         else
-            PIHOLE_WEB_DEPS+=("php-cgi php-sqlite php-intl")
+            PIHOLE_WEB_DEPS+=("${phpVer}-cgi ${phpVer}-sqlite ${phpVer}-intl")
         fi
         # The Web server user,
         LIGHTTPD_USER="_lighttpd"
@@ -1502,6 +1503,7 @@ installFastCGI() {
         install -Dm755 -d "${cgiConfDir}"
         install -Dm644 -t "${cgiConfDir}" "${VOIDHOLE_LOCAL_REPO}/custom/${cgiConfFile}"
         echo "include ${cgiConfDir}/${cgiConfFile}" | tee -a ./external.conf >/dev/null 
+        install -o pihole -Dm755 -d /run/pihole
         restart_service lighttpd
         printf "%b  %b %s\\n" "${OVER}" "${TICK}" "${str}"
     else    
@@ -1973,7 +1975,12 @@ FTLinstall() {
     pushd "$(mktemp -d)" > /dev/null || { printf "Unable to make temporary directory for FTL binary download\\n"; return 1; }
 
     # Always replace pihole-FTL.service
-    install -T -m 0755 "${PI_HOLE_LOCAL_REPO}/advanced/Templates/pihole-FTL.service" "/etc/sv/pihole-FTL/"
+    #install -T -m 0755 "${PI_HOLE_LOCAL_REPO}/advanced/Templates/pihole-FTL.service" "/etc/sv/pihole-FTL/"
+
+    # Always replace pihole-FTL.service
+    install -T -m 0755 "${VOIDHOLE_LOCAL_REPO}/custom/runit/pihole-FTL/run" "/etc/sv/pihole-FTL/"
+    install -T -m 0755 "${VOIDHOLE_LOCAL_REPO}/custom/runit/pihole-FTL/finish" "/etc/sv/pihole-FTL/"
+    ln -sfv /run/runit/supervise.pihole-FTL /etc/sv/pihole-FTL/supervise
 
     local ftlBranch
     local url
@@ -1989,7 +1996,7 @@ FTLinstall() {
 
     # Determine which version of FTL to download
     if [[ "${ftlBranch}" == "master" ]];then
-        url="https://github.com/pi-hole/ftl/releases/latest/"
+        url="https://github.com/pi-hole/ftl/releases/latest"
     else
         url="https://ftl.pi-hole.net/${ftlBranch}"
     fi
