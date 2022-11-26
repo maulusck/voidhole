@@ -46,7 +46,6 @@ Options:
   -c, celsius                     Set Celsius as preferred temperature unit
   -f, fahrenheit                  Set Fahrenheit as preferred temperature unit
   -k, kelvin                      Set Kelvin as preferred temperature unit
-  -e, email                       Set an administrative contact address for the Block Page
   -h, --help                      Show this help dialog
   -i, interface                   Specify dnsmasq's interface listening behavior
   -l, privacylevel                Set privacy level (0 = lowest, 3 = highest)
@@ -394,13 +393,8 @@ ProcessDHCPSettings() {
         if [[ "${DHCP_LEASETIME}" == "0" ]]; then
             leasetime="infinite"
         elif [[ "${DHCP_LEASETIME}" == "" ]]; then
-            leasetime="24"
-            addOrEditKeyValPair "${setupVars}" "DHCP_LEASETIME" "${leasetime}"
-        elif [[ "${DHCP_LEASETIME}" == "24h" ]]; then
-            #Installation is affected by known bug, introduced in a previous version.
-            #This will automatically clean up setupVars.conf and remove the unnecessary "h"
-            leasetime="24"
-            addOrEditKeyValPair "${setupVars}" "DHCP_LEASETIME" "${leasetime}"
+            leasetime="24h"
+            addOrEditKeyValPair "${setupVars}" "DHCP_LEASETIME" "24"
         else
             leasetime="${DHCP_LEASETIME}h"
         fi
@@ -568,37 +562,6 @@ RemoveDHCPStaticAddress() {
 
 }
 
-SetAdminEmail() {
-    if [[ "${1}" == "-h" ]] || [[ "${1}" == "--help" ]]; then
-        echo "Usage: pihole -a email <address>
-Example: 'pihole -a email admin@address.com'
-Set an administrative contact address for the Block Page
-
-Options:
-  \"\"                  Empty: Remove admin contact
-  -h, --help          Show this help dialog"
-        exit 0
-    fi
-
-    if [[ -n "${args[2]}" ]]; then
-
-        # Sanitize email address in case of security issues
-        # Regex from https://stackoverflow.com/a/2138832/4065967
-        local regex
-        regex="^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\$"
-        if [[ ! "${args[2]}" =~ ${regex} ]]; then
-            echo -e "  ${CROSS} Invalid email address"
-            exit 0
-        fi
-
-        addOrEditKeyValPair "${setupVars}" "ADMIN_EMAIL" "${args[2]}"
-        echo -e "  ${TICK} Setting admin contact to ${args[2]}"
-    else
-        addOrEditKeyValPair "${setupVars}" "ADMIN_EMAIL" ""
-        echo -e "  ${TICK} Removing admin contact"
-    fi
-}
-
 SetListeningMode() {
     source "${setupVars}"
 
@@ -662,6 +625,14 @@ checkDomain()
     validDomain=$(grep -P "^((-|_)*[a-z\\d]((-|_)*[a-z\\d])*(-|_)*)(\\.(-|_)*([a-z\\d]((-|_)*[a-z\\d])*))*$" <<< "${domain}") # Valid chars check
     validDomain=$(grep -P "^[^\\.]{1,63}(\\.[^\\.]{1,63})*$" <<< "${validDomain}") # Length of each label
     echo "${validDomain}"
+}
+
+escapeDots()
+{
+    # SC suggest bashism ${variable//search/replace}
+    # shellcheck disable=SC2001
+    escaped=$(echo "$1" | sed 's/\./\\./g')
+    echo "${escaped}"
 }
 
 addAudit()
@@ -739,6 +710,7 @@ RemoveCustomDNSAddress() {
     validHost="$(checkDomain "${host}")"
     if [[ -n "${validHost}" ]]; then
         if valid_ip "${ip}" || valid_ip6 "${ip}" ; then
+            validHost=$(escapeDots "${validHost}")
             sed -i "/^${ip} ${validHost}$/Id" "${dnscustomfile}"
         else
             echo -e "  ${CROSS} Invalid IP has been passed"
@@ -766,7 +738,12 @@ AddCustomCNAMERecord() {
     if [[ -n "${validDomain}" ]]; then
         validTarget="$(checkDomain "${target}")"
         if [[ -n "${validTarget}" ]]; then
-            echo "cname=${validDomain},${validTarget}" >> "${dnscustomcnamefile}"
+            if [ "${validDomain}" = "${validTarget}" ]; then
+                echo "  ${CROSS} Domain and target are the same. This would cause a DNS loop."
+                exit 1
+            else
+                echo "cname=${validDomain},${validTarget}" >> "${dnscustomcnamefile}"
+            fi
         else
             echo "  ${CROSS} Invalid Target Passed!"
             exit 1
@@ -792,7 +769,9 @@ RemoveCustomCNAMERecord() {
     if [[ -n "${validDomain}" ]]; then
         validTarget="$(checkDomain "${target}")"
         if [[ -n "${validTarget}" ]]; then
-            sed -i "/cname=${validDomain},${validTarget}$/Id" "${dnscustomcnamefile}"
+            validDomain=$(escapeDots "${validDomain}")
+            validTarget=$(escapeDots "${validTarget}")
+            sed -i "/^cname=${validDomain},${validTarget}$/Id" "${dnscustomcnamefile}"
         else
             echo "  ${CROSS} Invalid Target Passed!"
             exit 1
@@ -847,7 +826,6 @@ main() {
         "-h" | "--help"       ) helpFunc;;
         "addstaticdhcp"       ) AddDHCPStaticAddress;;
         "removestaticdhcp"    ) RemoveDHCPStaticAddress;;
-        "-e" | "email"        ) SetAdminEmail "$3";;
         "-i" | "interface"    ) SetListeningMode "$@";;
         "-t" | "teleporter"   ) Teleporter;;
         "adlist"              ) CustomizeAdLists;;

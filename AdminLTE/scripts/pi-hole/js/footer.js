@@ -49,15 +49,15 @@ function countDown() {
 
   //Stop and remove timer when user enabled early
   if ($("#pihole-enable").is(":hidden")) {
-    ena.text("Enable");
+    ena.text("Enable Blocking");
     return;
   }
 
   if (seconds > 0) {
     setTimeout(countDown, 1000);
-    ena.text("Enable (" + secondsTimeSpanToHMS(seconds) + ")");
+    ena.text("Enable Blocking (" + secondsTimeSpanToHMS(seconds) + ")");
   } else {
-    ena.text("Enable");
+    ena.text("Enable Blocking");
     piholeChanged("enabled");
     if (localStorage) {
       localStorage.removeItem("countDownTarget");
@@ -150,7 +150,7 @@ function initCheckboxRadioStyle() {
   var iCheckStyle = $("#iCheckStyle");
   if (iCheckStyle !== null) {
     iCheckStyle.val(chkboxStyle);
-    iCheckStyle.change(function () {
+    iCheckStyle.on("change", function () {
       var themename = $(this).val();
       localStorage.setItem("theme_icheck", themename);
       applyCheckboxRadioStyle(themename);
@@ -197,7 +197,7 @@ function initCPUtemp() {
   var tempunitSelector = $("#tempunit-selector");
   if (tempunitSelector !== null) {
     tempunitSelector.val(tempunit);
-    tempunitSelector.change(function () {
+    tempunitSelector.on("change", function () {
       tempunit = $(this).val();
       setCPUtemp(tempunit);
     });
@@ -255,41 +255,8 @@ $("#pihole-disable-custom").on("click", function (e) {
   piholeChange("disable", custVal);
 });
 
-// Session timer
-var sessionTimerCounter = document.getElementById("sessiontimercounter");
-var sessionvalidity = parseInt(sessionTimerCounter.textContent, 10);
-var start = new Date();
-
-function updateSessionTimer() {
-  start = new Date();
-  start.setSeconds(start.getSeconds() + sessionvalidity);
-}
-
-if (sessionvalidity > 0) {
-  // setSeconds will correctly handle wrap-around cases
-  updateSessionTimer();
-
-  setInterval(function () {
-    var current = new Date();
-    var totalseconds = (start - current) / 1000;
-    var minutes = Math.floor(totalseconds / 60);
-    if (minutes < 10) {
-      minutes = "0" + minutes;
-    }
-
-    var seconds = Math.floor(totalseconds % 60);
-    if (seconds < 10) {
-      seconds = "0" + seconds;
-    }
-
-    sessionTimerCounter.textContent = totalseconds > 0 ? minutes + ":" + seconds : "-- : --";
-  }, 1000);
-} else {
-  document.getElementById("sessiontimer").style.display = "none";
-}
-
 // Handle Ctrl + Enter button on Login page
-$(document).keypress(function (e) {
+$(document).on("keypress", function (e) {
   if ((e.keyCode === 10 || e.keyCode === 13) && e.ctrlKey && $("#loginpw").is(":focus")) {
     $("#loginform").attr("action", "settings.php");
     $("#loginform").submit();

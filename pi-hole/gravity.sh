@@ -40,6 +40,7 @@ gravityDBschema="${piholeGitDir}/advanced/Templates/gravity.db.sql"
 gravityDBcopy="${piholeGitDir}/advanced/Templates/gravity_copy.sql"
 
 domainsExtension="domains"
+curl_connect_timeout=10
 
 # Source setupVars from install script
 setupVars="${piholeDir}/setupVars.conf"
@@ -139,9 +140,9 @@ update_gravity_timestamp() {
 # Import domains from file and store them in the specified database table
 database_table_from_file() {
   # Define locals
-  local table source backup_path backup_file tmpFile type
+  local table src backup_path backup_file tmpFile list_type
   table="${1}"
-  source="${2}"
+  src="${2}"
   backup_path="${piholeDir}/migration_backup"
   backup_file="${backup_path}/$(basename "${2}")"
   tmpFile="$(mktemp -p "/tmp" --suffix=".gravity")"
@@ -155,13 +156,13 @@ database_table_from_file() {
 
   # Special handling for domains to be imported into the common domainlist table
   if [[ "${table}" == "whitelist" ]]; then
-    type="0"
+    list_type="0"
     table="domainlist"
   elif [[ "${table}" == "blacklist" ]]; then
-    type="1"
+    list_type="1"
     table="domainlist"
   elif [[ "${table}" == "regex" ]]; then
-    type="3"
+    list_type="3"
     table="domainlist"
   fi
 
@@ -174,9 +175,9 @@ database_table_from_file() {
     rowid+=1
   fi
 
-  # Loop over all domains in ${source} file
+  # Loop over all domains in ${src} file
   # Read file line by line
-  grep -v '^ *#' < "${source}" | while IFS= read -r domain
+  grep -v '^ *#' < "${src}" | while IFS= read -r domain
   do
     # Only add non-empty lines
     if [[ -n "${domain}" ]]; then
@@ -185,10 +186,10 @@ database_table_from_file() {
         echo "${rowid},\"${domain}\",${timestamp}" >> "${tmpFile}"
       elif [[ "${table}" == "adlist" ]]; then
         # Adlist table format
-        echo "${rowid},\"${domain}\",1,${timestamp},${timestamp},\"Migrated from ${source}\",,0,0,0" >> "${tmpFile}"
+        echo "${rowid},\"${domain}\",1,${timestamp},${timestamp},\"Migrated from ${src}\",,0,0,0" >> "${tmpFile}"
       else
         # White-, black-, and regexlist table format
-        echo "${rowid},${type},\"${domain}\",1,${timestamp},${timestamp},\"Migrated from ${source}\"" >> "${tmpFile}"
+        echo "${rowid},${list_type},\"${domain}\",1,${timestamp},${timestamp},\"Migrated from ${src}\"" >> "${tmpFile}"
       fi
       rowid+=1
     fi
@@ -201,14 +202,14 @@ database_table_from_file() {
   status="$?"
 
   if [[ "${status}" -ne 0 ]]; then
-    echo -e "\\n  ${CROSS} Unable to fill table ${table}${type} in database ${gravityDBfile}\\n  ${output}"
+    echo -e "\\n  ${CROSS} Unable to fill table ${table}${list_type} in database ${gravityDBfile}\\n  ${output}"
     gravity_Cleanup "error"
   fi
 
   # Move source file to backup directory, create directory if not existing
   mkdir -p "${backup_path}"
-  mv "${source}" "${backup_file}" 2> /dev/null || \
-    echo -e "  ${CROSS} Unable to backup ${source} to ${backup_path}"
+  mv "${src}" "${backup_file}" 2> /dev/null || \
+    echo -e "  ${CROSS} Unable to backup ${src} to ${backup_path}"
 
   # Delete tmpFile
   rm "${tmpFile}" > /dev/null 2>&1 || \
@@ -641,7 +642,7 @@ gravity_DownloadBlocklistFromUrl() {
   fi
 
   # shellcheck disable=SC2086
-  httpCode=$(curl -s -L ${compression} ${cmd_ext} ${heisenbergCompensator} -w "%{http_code}" -A "${agent}" "${url}" -o "${patternBuffer}" 2> /dev/null)
+  httpCode=$(curl --connect-timeout ${curl_connect_timeout} -s -L ${compression} ${cmd_ext} ${heisenbergCompensator} -w "%{http_code}" -A "${agent}" "${url}" -o "${patternBuffer}" 2> /dev/null)
 
   case $url in
     # Did we "download" a local file?
@@ -719,72 +720,25 @@ gravity_DownloadBlocklistFromUrl() {
 
 # Parse source files into domains format
 gravity_ParseFileIntoDomains() {
-  local source="${1}" destination="${2}" firstLine
+  local src="${1}" destination="${2}"
 
-  # Determine if we are parsing a consolidated list
-  #if [[ "${source}" == "${piholeDir}/${matterAndLight}" ]]; then
-    # Remove comments and print only the domain name
-    # Most of the lists downloaded are already in hosts file format but the spacing/formatting is not contiguous
-    # This helps with that and makes it easier to read
-    # It also helps with debugging so each stage of the script can be researched more in depth
-    # 1) Remove carriage returns
-    # 2) Convert all characters to lowercase
-    # 3) Remove comments (text starting with "#", include possible spaces before the hash sign)
-    # 4) Remove lines containing "/"
-    # 5) Remove leading tabs, spaces, etc.
-    # 6) Delete lines not matching domain names
-    < "${source}" tr -d '\r' | \
-    tr '[:upper:]' '[:lower:]' | \
-    sed 's/\s*#.*//g' | \
-    sed -r '/(\/).*$/d' | \
-    sed -r 's/^.*\s+//g' | \
-    sed -r '/([^\.]+\.)+[^\.]{2,}/!d' >  "${destination}"
-    chmod 644 "${destination}"
-    return 0
-  #fi
-
-  # Individual file parsing: Keep comments, while parsing domains from each line
-  # We keep comments to respect the list maintainer's licensing
-  read -r firstLine < "${source}"
-
-  # Determine how to parse individual source file formats
-  if [[ "${firstLine,,}" =~ (adblock|ublock|^!) ]]; then
-    # Compare $firstLine against lower case words found in Adblock lists
-    echo -e "  ${CROSS} Format: Adblock (list type not supported)"
-  elif grep -q "^address=/" "${source}" &> /dev/null; then
-    # Parse Dnsmasq format lists
-    echo -e "  ${CROSS} Format: Dnsmasq (list type not supported)"
-  elif grep -q -E "^https?://" "${source}" &> /dev/null; then
-    # Parse URL list if source file contains "http://" or "https://"
-    # Scanning for "^IPv4$" is too slow with large (1M) lists on low-end hardware
-    echo -ne "  ${INFO} Format: URL"
-
-    awk '
-      # Remove URL scheme, optional "username:password@", and ":?/;"
-      # The scheme must be matched carefully to avoid blocking the wrong URL
-      # in cases like:
-      #   http://www.evil.com?http://www.good.com
-      # See RFC 3986 section 3.1 for details.
-      /[:?\/;]/ { gsub(/(^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/(.*:.*@)?|[:?\/;].*)/, "", $0) }
-      # Skip lines which are only IPv4 addresses
-      /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ { next }
-      # Print if nonempty
-      length { print }
-    ' "${source}" 2> /dev/null > "${destination}"
-    chmod 644 "${destination}"
-
-    echo -e "${OVER}  ${TICK} Format: URL"
-  else
-    # Default: Keep hosts/domains file in same format as it was downloaded
-    output=$( { mv "${source}" "${destination}"; } 2>&1 )
-    chmod 644 "${destination}"
-
-    if [[ ! -e "${destination}" ]]; then
-      echo -e "\\n  ${CROSS} Unable to move tmp file to ${piholeDir}
-    ${output}"
-      gravity_Cleanup "error"
-    fi
-  fi
+  # Remove comments and print only the domain name
+  # Most of the lists downloaded are already in hosts file format but the spacing/formatting is not contiguous
+  # This helps with that and makes it easier to read
+  # It also helps with debugging so each stage of the script can be researched more in depth
+  # 1) Remove carriage returns
+  # 2) Convert all characters to lowercase
+  # 3) Remove comments (text starting with "#", include possible spaces before the hash sign)
+  # 4) Remove lines containing "/"
+  # 5) Remove leading tabs, spaces, etc.
+  # 6) Delete lines not matching domain names
+  < "${src}" tr -d '\r' | \
+  tr '[:upper:]' '[:lower:]' | \
+  sed 's/\s*#.*//g' | \
+  sed -r '/(\/).*$/d' | \
+  sed -r 's/^.*\s+//g' | \
+  sed -r '/([^\.]+\.)+[^\.]{2,}/!d' >  "${destination}"
+  chmod 644 "${destination}"
 }
 
 # Report number of entries in a table
@@ -870,15 +824,19 @@ gravity_Cleanup() {
 
 database_recovery() {
   local result
-  local str="Checking integrity of existing gravity database"
+  local str="Checking integrity of existing gravity database (this can take a while)"
   local option="${1}"
   echo -ne "  ${INFO} ${str}..."
-  if result="$(pihole-FTL sqlite3 "${gravityDBfile}" "PRAGMA integrity_check" 2>&1)"; then
+  result="$(pihole-FTL sqlite3 "${gravityDBfile}" "PRAGMA integrity_check" 2>&1)"
+
+  if [[ ${result} = "ok" ]]; then
     echo -e "${OVER}  ${TICK} ${str} - no errors found"
 
-    str="Checking foreign keys of existing gravity database"
+    str="Checking foreign keys of existing gravity database (this can take a while)"
     echo -ne "  ${INFO} ${str}..."
-    if result="$(pihole-FTL sqlite3 "${gravityDBfile}" "PRAGMA foreign_key_check" 2>&1)"; then
+    unset result
+    result="$(pihole-FTL sqlite3 "${gravityDBfile}" "PRAGMA foreign_key_check" 2>&1)"
+    if [[ -z ${result} ]]; then
       echo -e "${OVER}  ${TICK} ${str} - no errors found"
       if [[ "${option}" != "force" ]]; then
         return

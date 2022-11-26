@@ -31,9 +31,12 @@ addOrEditKeyValPair() {
   local key="${2}"
   local value="${3}"
 
+  # touch file to prevent grep error if file does not exist yet
+  touch "${file}"
+
   if grep -q "^${key}=" "${file}"; then
-      # Key already exists in file, modify the value
-      sed -i "/^${key}=/c\\${key}=${value}" "${file}"
+    # Key already exists in file, modify the value
+    sed -i "/^${key}=/c\\${key}=${value}" "${file}"
   else
     # Key does not already exist, add it and it's value
     echo "${key}=${value}" >> "${file}"
@@ -51,9 +54,12 @@ addKey(){
   local file="${1}"
   local key="${2}"
 
+  # touch file to prevent grep error if file does not exist yet
+  touch "${file}"
+
   if ! grep -q "^${key}" "${file}"; then
-      # Key does not exist, add it.
-      echo "${key}" >> "${file}"
+    # Key does not exist, add it.
+    echo "${key}" >> "${file}"
   fi
 }
 
@@ -70,29 +76,68 @@ removeKey() {
   sed -i "/^${key}/d" "${file}"
 }
 
+
 #######################
-# returns FTL's current telnet API port
-#######################
+# returns FTL's current telnet API port based on the setting in /etc/pihole-FTL.conf
+########################
 getFTLAPIPort(){
+    local FTLCONFFILE="/etc/pihole/pihole-FTL.conf"
+    local DEFAULT_FTL_PORT=4711
+    local ftl_api_port
+
+    if [ -s "$FTLCONFFILE" ]; then
+        # if FTLPORT is not set in pihole-FTL.conf, use the default port
+        ftl_api_port="$({ grep '^FTLPORT=' "${FTLCONFFILE}" || echo "${DEFAULT_FTL_PORT}"; } | cut -d'=' -f2-)"
+        # Exploit prevention: set the port to the default port if there is malicious (non-numeric)
+        # content set in pihole-FTL.conf
+        expr "${ftl_api_port}" : "[^[:digit:]]" > /dev/null && ftl_api_port="${DEFAULT_FTL_PORT}"
+    else
+        # if there is no pihole-FTL.conf, use the default port
+        ftl_api_port="${DEFAULT_FTL_PORT}"
+    fi
+
+    echo "${ftl_api_port}"
+}
+
+#######################
+# returns path of FTL's PID  file
+#######################
+getFTLPIDFile() {
   local FTLCONFFILE="/etc/pihole/pihole-FTL.conf"
-  local DEFAULT_PORT_FILE="/run/pihole-FTL.port"
-  local DEFAULT_FTL_PORT=4711
-  local PORTFILE
-  local ftl_api_port
+  local DEFAULT_PID_FILE="/run/pihole-FTL.pid"
+  local FTL_PID_FILE
 
-  if [ -f "$FTLCONFFILE" ]; then
-    # if PORTFILE is not set in pihole-FTL.conf, use the default path
-    PORTFILE="$( (grep "^PORTFILE=" $FTLCONFFILE || echo "$DEFAULT_PORT_FILE") | cut -d"=" -f2-)"
+  if [ -s "${FTLCONFFILE}" ]; then
+    # if PIDFILE is not set in pihole-FTL.conf, use the default path
+    FTL_PID_FILE="$({ grep '^PIDFILE=' "${FTLCONFFILE}" || echo "${DEFAULT_PID_FILE}"; } | cut -d'=' -f2-)"
+  else
+    # if there is no pihole-FTL.conf, use the default path
+    FTL_PID_FILE="${DEFAULT_PID_FILE}"
   fi
 
-  if [ -s "$PORTFILE" ]; then
-    # -s: FILE exists and has a size greater than zero
-    ftl_api_port=$(cat "${PORTFILE}")
-    # Exploit prevention: unset the variable if there is malicious content
-    # Verify that the value read from the file is numeric
-    expr "$ftl_api_port" : "[^[:digit:]]" > /dev/null && unset ftl_api_port
-  fi
+  echo "${FTL_PID_FILE}"
+}
 
-  # echo the port found in the portfile or default to the default port
-  echo "${ftl_api_port:=$DEFAULT_FTL_PORT}"
+#######################
+# returns FTL's PID based on the content of the pihole-FTL.pid file
+#
+# Takes one argument: path to pihole-FTL.pid
+# Example getFTLPID "/run/pihole-FTL.pid"
+#######################
+getFTLPID() {
+    local FTL_PID_FILE="${1}"
+    local FTL_PID
+
+    if [ -s "${FTL_PID_FILE}" ]; then
+        # -s: FILE exists and has a size greater than zero
+        FTL_PID="$(cat "${FTL_PID_FILE}")"
+        # Exploit prevention: unset the variable if there is malicious content
+        # Verify that the value read from the file is numeric
+        expr "${FTL_PID}" : "[^[:digit:]]" > /dev/null && unset FTL_PID
+    fi
+
+    # If FTL is not running, or the PID file contains malicious stuff, substitute
+    # negative PID to signal this
+    FTL_PID=${FTL_PID:=-1}
+    echo  "${FTL_PID}"
 }

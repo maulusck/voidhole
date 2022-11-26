@@ -111,63 +111,67 @@ function handleAjaxError(xhr, textStatus) {
   tableApi.draw();
 }
 
-function getQueryTypes() {
-  var queryType = [];
-  if ($("#type_gravity").prop("checked")) {
-    queryType.push(1);
+function excludeStatusTypes() {
+  var statusType = [];
+  if ($("#type_gravity").prop("checked") === false) {
+    statusType.push(1);
   }
 
-  if ($("#type_forwarded").prop("checked")) {
-    queryType.push([2, 14]);
+  if ($("#type_forwarded").prop("checked") === false) {
+    statusType.push([2, 14]);
   }
 
-  if ($("#type_cached").prop("checked")) {
-    queryType.push(3);
+  if ($("#type_cached").prop("checked") === false) {
+    statusType.push(3);
   }
 
-  if ($("#type_regex").prop("checked")) {
-    queryType.push(4);
+  if ($("#type_regex").prop("checked") === false) {
+    statusType.push(4);
   }
 
-  if ($("#type_blacklist").prop("checked")) {
-    queryType.push(5);
+  if ($("#type_blacklist").prop("checked") === false) {
+    statusType.push(5);
   }
 
-  if ($("#type_external").prop("checked")) {
+  if ($("#type_external").prop("checked") === false) {
     // Multiple IDs correspond to this status
     // We request queries with all of them
-    queryType.push([6, 7, 8]);
+    statusType.push([6, 7, 8]);
   }
 
-  if ($("#type_gravity_CNAME").prop("checked")) {
-    queryType.push(9);
+  if ($("#type_gravity_CNAME").prop("checked") === false) {
+    statusType.push(9);
   }
 
-  if ($("#type_regex_CNAME").prop("checked")) {
-    queryType.push(10);
+  if ($("#type_regex_CNAME").prop("checked") === false) {
+    statusType.push(10);
   }
 
-  if ($("#type_blacklist_CNAME").prop("checked")) {
-    queryType.push(11);
+  if ($("#type_blacklist_CNAME").prop("checked") === false) {
+    statusType.push(11);
   }
 
-  if ($("#type_retried").prop("checked")) {
+  if ($("#type_retried").prop("checked") === false) {
     // Multiple IDs correspond to this status
     // We request queries with all of them
-    queryType.push([12, 13]);
+    statusType.push([12, 13]);
   }
 
   // 14 is defined above
 
-  if ($("#type_dbbusy").prop("checked")) {
-    queryType.push(15);
+  if ($("#type_dbbusy").prop("checked") === false) {
+    statusType.push(15);
   }
 
-  if ($("#type_special_domain").prop("checked")) {
-    queryType.push(16);
+  if ($("#type_special_domain").prop("checked") === false) {
+    statusType.push(16);
   }
 
-  return queryType.join(",");
+  if ($("#type_cached_stale").prop("checked") === false) {
+    statusType.push(17);
+  }
+
+  return statusType.join(",");
 }
 
 var reloadCallback = function () {
@@ -176,7 +180,7 @@ var reloadCallback = function () {
   var data = tableApi.rows().data();
   for (var i = 0; i < data.length; i++) {
     statistics[0]++; // TOTAL query
-    if (data[i][4] === 1 || (data[i][4] > 4 && ![10, 12, 13, 14].includes(data[i][4]))) {
+    if (data[i][4] === 1 || (data[i][4] > 4 && ![10, 12, 13, 14, 17].includes(data[i][4]))) {
       statistics[2]++; // EXACT blocked
     } else if (data[i][4] === 3) {
       statistics[1]++; // CACHE query
@@ -203,10 +207,10 @@ function refreshTableData() {
   timeoutWarning.show();
   reloadBox.hide();
   var APIstring = "api_db.php?getAllQueries&from=" + from + "&until=" + until;
-  // Check if query type filtering is enabled
-  var queryType = getQueryTypes();
-  if (queryType !== "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16") {
-    APIstring += "&types=" + queryType;
+  // If status types should be excluded ("unchecked") we add them to the query
+  var statusType = excludeStatusTypes();
+  if (statusType.length > 0) {
+    APIstring += "&status=" + statusType;
   }
 
   statistics = [0, 0, 0];
@@ -218,11 +222,10 @@ $(function () {
     ? "api_db.php?getAllQueries&from=" + from + "&until=" + until
     : "api_db.php?getAllQueries=empty";
 
-  // Check if query type filtering is enabled
-  var queryType = getQueryTypes();
-  if (queryType !== 63) {
-    // 63 (0b00111111) = all possible query types are selected
-    APIstring += "&types=" + queryType;
+  // If status types should be excluded ("unchecked") we add them to the query
+  var statusType = excludeStatusTypes();
+  if (statusType.length > 0) {
+    APIstring += "&status=" + statusType;
   }
 
   tableApi = $("#all-queries").DataTable({
@@ -350,6 +353,13 @@ $(function () {
             "<span class='text-orange'>Blocked <br class='hidden-lg'>(special domain)</span>";
           blocked = true;
           break;
+        case 17:
+          fieldtext =
+            "<span class='text-orange'>OK</span> <br class='hidden-lg'>(stale cache)" +
+            dnssecStatus;
+          buttontext =
+            '<button type="button" class="btn btn-default btn-sm text-red"><i class="fa fa-ban"></i> Blacklist</button>';
+          break;
         default:
           fieldtext = "Unknown (" + parseInt(data[4], 10) + ")";
       }
@@ -378,6 +388,9 @@ $(function () {
       }
 
       // Substitute domain by "." if empty
+      // This was introduced by https://github.com/pi-hole/AdminLTE/pull/1244 but is considered obsolete since
+      // https://github.com/pi-hole/FTL/pull/1413. However, we keep the conversion here to keep user's
+      // statistic accurat when they import older data with empty domain fields
       var domain = data[2];
       if (domain.length === 0) {
         domain = ".";
@@ -462,12 +475,12 @@ $("#querytime").on("apply.daterangepicker", function (ev, picker) {
   refreshTableData();
 });
 
-$("input[id^=type]").change(function () {
+$("input[id^=type]").on("change", function () {
   if (datepickerManuallySelected) {
     reloadBox.show();
   }
 });
 
-$(".bt-reload").click(function () {
+$(".bt-reload").on("click", function () {
   refreshTableData();
 });
